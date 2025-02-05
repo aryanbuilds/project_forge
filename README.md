@@ -39,7 +39,7 @@ pip install -r requirements.txt
 To embed a watermark into an image, use the following command:
 
 ```sh
-python watermarking.py --mode embed --input <input_image_path> --output <output_image_path> --strength <watermark_strength>
+python embed_watermark.py --input <input_image_path> --output <output_image_path> --strength <watermark_strength>
 ```
 
 - `--input`: Path to the input image.
@@ -51,7 +51,7 @@ python watermarking.py --mode embed --input <input_image_path> --output <output_
 To extract a watermark from a watermarked image, use the following command:
 
 ```sh
-python watermarking.py --mode extract --input <watermarked_image_path> --output <output_path> --original <original_image_path>
+python extract_watermark.py --input <watermarked_image_path> --output <output_path> --original <original_image_path>
 ```
 
 - `--input`: Path to the watermarked image.

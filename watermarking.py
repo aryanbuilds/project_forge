@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import pywt
-import argparse
 from pathlib import Path
 from datetime import datetime
 import hashlib
@@ -12,7 +11,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from scipy.fftpack import dct, idct
 from concurrent.futures import ThreadPoolExecutor
-import sys
 
 # Configure logging
 logging.basicConfig(
@@ -24,10 +22,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class WatermarkConfig:
     """Configuration for watermark parameters"""
-    strength: float = 0.05
+    strength: float = 0.07
     block_size: Tuple[int, int] = (32, 32)
     wavelet: str = 'haar'
-    compression_quality: int = 85
+    compression_quality: int = 100
     max_image_size: int = 4096
     min_image_size: int = 512
 
@@ -171,14 +169,13 @@ class HybridDWTDCTWatermark(WatermarkStrategy):
             
             # Apply DWT
             coeffs_orig = pywt.dwt2(Y_orig, self.config.wavelet)
-            _, (_, HL_orig, _, _) = coeffs_orig
-            
             coeffs_wm = pywt.dwt2(Y_wm, self.config.wavelet)
-            _, (_, HL_wm, _, _) = coeffs_wm
+            LL_orig, (LH_orig, HL_orig, HH_orig) = coeffs_orig
+            LL_wm, (LH_wm, HL_wm, HH_wm) = coeffs_wm
             
             # Prepare blocks for parallel processing
-            orig_blocks = self._split_into_blocks(HL_orig, self.config.block_size)
-            wm_blocks = self._split_into_blocks(HL_wm, self.config.block_size)
+            orig_blocks = list(self._split_into_blocks(HL_orig, self.config.block_size))
+            wm_blocks = list(self._split_into_blocks(HL_wm, self.config.block_size))
             
             # Generate PRN sequences (same as embedding)
             prn_sequences = [
@@ -246,78 +243,71 @@ class WatermarkManager:
         return np.random.randint(0, 2, block_count, dtype=np.uint8)
     
     def process_image(self, image_path: str, output_path: str) -> Dict:
-        """Main processing function"""
         try:
-            # Load and preprocess image
             image = cv2.imread(image_path)
             if image is None:
                 raise ValueError("Failed to load image")
-            
+
             h, w = image.shape[:2]
             if h > self.config.max_image_size or w > self.config.max_image_size:
                 scale = self.config.max_image_size / max(h, w)
                 new_size = (int(w * scale), int(h * scale))
                 image = cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
-            
-            # Generate and embed watermark
+
             watermark = self.generate_watermark(image.shape[:2])
             watermark_hash = hashlib.sha256(watermark.tobytes()).hexdigest()
-            
+            logger.info(f"Generated watermark hash: {watermark_hash}")
+
             watermarked_image = self.strategy.embed(image, watermark)
-            
-            # Save result
-            cv2.imwrite(
-                output_path,
-                watermarked_image,
-                [cv2.IMWRITE_JPEG_QUALITY, self.config.compression_quality]
-            )
-            
-            # Store metadata
+            cv2.imwrite(output_path, watermarked_image, [cv2.IMWRITE_PNG_COMPRESSION, 0])  # Use PNG for lossless compression
+
             metadata = {
                 'timestamp': datetime.now().isoformat(),
                 'watermark_hash': watermark_hash,
                 'original_size': image.shape,
-                'config': self.config.__dict__
+                'config': self.config.__dict__,
+                'watermark': watermark.tolist()  # Store the actual watermark array
             }
-            self.metadata_store[Path(output_path).stem] = metadata
+            
+            # Persist metadata to a JSON file
+            metadata_file = Path(output_path).stem + "_metadata.json"
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
             
             return metadata
-            
+
         except Exception as e:
             logger.error(f"Error processing image: {str(e)}")
             raise
-    
+
     def extract_watermark(self, original_path: str, watermarked_path: str) -> Dict:
-        """Extract and verify watermark"""
         try:
-            # Load images
             original = cv2.imread(original_path)
             watermarked = cv2.imread(watermarked_path)
-            
             if original is None or watermarked is None:
                 raise ValueError("Failed to load images")
-            
-            # Preprocess both images
-            original = self.processor.preprocess_image(original)
-            watermarked = self.processor.preprocess_image(watermarked)
-            
-            # Extract watermark
+
+            if original.shape != watermarked.shape:
+                watermarked = cv2.resize(watermarked, (original.shape[1], original.shape[0]), interpolation=cv2.INTER_AREA)
+
             extracted_watermark, confidence = self.strategy.extract(original, watermarked)
-            
-            # Calculate hash of extracted watermark
             extracted_hash = hashlib.sha256(extracted_watermark.tobytes()).hexdigest()
-            
-            # Get stored metadata
-            metadata_key = Path(watermarked_path).stem
-            original_metadata = self.metadata_store.get(metadata_key, {})
-            
-            # Verify against stored hash
+            logger.info(f"Extracted watermark hash: {extracted_hash}")
+
+            # Load metadata from JSON file
+            metadata_file = Path(watermarked_path).stem + "_metadata.json"
+            if Path(metadata_file).exists():
+                with open(metadata_file, 'r') as f:
+                    original_metadata = json.load(f)
+            else:
+                original_metadata = {}
+
             is_verified = False
             if original_metadata:
                 stored_hash = original_metadata.get('watermark_hash')
-                is_verified = stored_hash == extracted_hash
-            
-            # Prepare result
+                stored_watermark = np.array(original_metadata.get('watermark'))
+                is_verified = stored_hash == extracted_hash and np.array_equal(stored_watermark, extracted_watermark)
+
             result = {
                 'timestamp': datetime.now().isoformat(),
                 'extracted_hash': extracted_hash,
@@ -325,40 +315,9 @@ class WatermarkManager:
                 'is_verified': is_verified,
                 'original_metadata': original_metadata
             }
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Error extracting watermark: {str(e)}")
             raise
-
-def main():
-    """Command-line interface"""
-    parser = argparse.ArgumentParser(description="Enterprise Image Watermarking")
-    parser.add_argument("--mode", choices=['embed', 'extract'], required=True,
-                       help="Operation mode: embed or extract")
-    parser.add_argument("--input", required=True, help="Input image path")
-    parser.add_argument("--output", required=True, help="Output path")
-    parser.add_argument("--strength", type=float, default=0.05,
-                       help="Watermark strength (for embedding)")
-    parser.add_argument("--original", help="Original image path (for extraction)")
-    args = parser.parse_args()
-    
-    config = WatermarkConfig(strength=args.strength)
-    manager = WatermarkManager(config)
-    
-    try:
-        if args.mode == 'embed':
-            metadata = manager.process_image(args.input, args.output)
-            print(f"Successfully embedded watermark. Metadata: {json.dumps(metadata, indent=2)}")
-        else:  # extract
-            if not args.original:
-                raise ValueError("Original image path required for extraction")
-            result = manager.extract_watermark(args.original, args.input)
-            print(f"Extraction result: {json.dumps(result, indent=2)}")
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
