@@ -58,6 +58,33 @@ python watermarking.py --mode extract --input <watermarked_image_path> --output 
 - `--output`: Path to save the extracted watermark.
 - `--original`: Path to the original image.
 
+## Metadata
+
+Upon successfully embedding a watermark, the following metadata will be generated:
+
+```json
+{
+    "timestamp": "2023-10-05T12:34:56.789012",
+    "watermark_hash": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+    "original_size": [
+        800,
+        600,
+        3
+    ],
+    "config": {
+        "strength": 0.07,
+        "block_size": [
+            16,
+            16
+        ],
+        "wavelet": "db2",
+        "compression_quality": 90,
+        "max_image_size": 2048,
+        "min_image_size": 256
+    }
+}
+```
+
 ## Additional Information
 
 - Ensure that the images used for embedding and extraction are of the same dimensions.
