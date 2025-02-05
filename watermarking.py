@@ -99,12 +99,18 @@ class HybridDWTDCTWatermark(WatermarkStrategy):
         
         return wm_h == blocks_h and wm_w == blocks_w
 
+    def _resize_watermark(self, watermark: np.ndarray, target_shape: Tuple[int, int]) -> np.ndarray:
+        """Resize watermark to match the target shape"""
+        return cv2.resize(watermark, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+
     def embed(self, image: np.ndarray, watermark: np.ndarray) -> np.ndarray:
         """Embed watermark using multi-threaded block processing"""
         try:
             # Validate dimensions
             if not self._validate_watermark_dimensions(image.shape, watermark.shape):
-                raise ValueError("Watermark dimensions do not match image block structure")
+                watermark = self._resize_watermark(watermark, (image.shape[0] // self.config.block_size[0], image.shape[1] // self.config.block_size[1]))
+                if not self._validate_watermark_dimensions(image.shape, watermark.shape):
+                    raise ValueError("Watermark dimensions do not match image block structure even after resizing")
 
             ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
             Y, Cr, Cb = cv2.split(ycrcb)
@@ -280,6 +286,12 @@ class WatermarkManager:
             logger.error(f"Error processing image: {str(e)}")
             raise
 
+    def _compare_watermarks(self, stored_watermark: np.ndarray, extracted_watermark: np.ndarray) -> bool:
+        """Compare stored and extracted watermarks directly"""
+        if stored_watermark is None or not isinstance(stored_watermark, np.ndarray) or stored_watermark.shape != extracted_watermark.shape:
+            return False
+        return np.array_equal(stored_watermark, extracted_watermark)
+
     def extract_watermark(self, original_path: str, watermarked_path: str) -> Dict:
         try:
             original = cv2.imread(original_path)
@@ -299,6 +311,7 @@ class WatermarkManager:
             if Path(metadata_file).exists():
                 with open(metadata_file, 'r') as f:
                     original_metadata = json.load(f)
+                    original_metadata['watermark'] = np.array(original_metadata['watermark'])
             else:
                 original_metadata = {}
 
@@ -306,7 +319,9 @@ class WatermarkManager:
             if original_metadata:
                 stored_hash = original_metadata.get('watermark_hash')
                 stored_watermark = np.array(original_metadata.get('watermark'))
-                is_verified = stored_hash == extracted_hash and np.array_equal(stored_watermark, extracted_watermark)
+                is_verified = stored_hash == extracted_hash and self._compare_watermarks(stored_watermark, extracted_watermark)
+                # Convert back to list for JSON serialization
+                original_metadata['watermark'] = stored_watermark.tolist()
 
             result = {
                 'timestamp': datetime.now().isoformat(),

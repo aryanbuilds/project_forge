@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime
 import logging
 from watermarking import WatermarkConfig, WatermarkManager
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -25,6 +26,10 @@ def main():
 
     try:
         metadata = manager.process_image(args.input, args.output)
+        stored_watermark = metadata.get('watermark')
+        if stored_watermark is None or not isinstance(stored_watermark, list):
+            raise ValueError("Stored watermark is None or not a valid list")
+        stored_watermark = np.array(stored_watermark)
         print(f"Successfully embedded watermark. Metadata: {json.dumps(metadata, indent=2)}")
     except Exception as e:
         print(f"Error: {str(e)}")
