@@ -31,12 +31,13 @@ class WatermarkStrategy(ABC):
         pass
 
     @abstractmethod
-    def extract(self, original: np.ndarray, watermarked: np.ndarray) -> Tuple[np.ndarray, float]:
+    def extract(self, original: np.ndarray, watermarked: np.ndarray):
         pass
 
 class SpectrogramWatermark(WatermarkStrategy):
     """Simplified strategy that uses alpha blending to embed a spectrogram."""
     def embed(self, image: np.ndarray, watermark: np.ndarray) -> np.ndarray:
+        logger.info(f"Embedding watermark with strength: {self.config.strength}")
         # Convert watermark to matching size
         h, w = image.shape[:2]
         wm_resized = cv2.resize(watermark, (w, h), interpolation=cv2.INTER_AREA)
@@ -48,26 +49,13 @@ class SpectrogramWatermark(WatermarkStrategy):
         # Alpha blend: new_pixel = alpha * spectrogram + (1 - alpha) * original_pixel
         alpha = self.config.strength
         blended = alpha * np.stack([wm_resized]*3, axis=2) + (1.0 - alpha) * img_float
+        logger.info(f"Watermark dimensions: {watermark.shape}")
+        logger.info("Watermark embedding completed.")
         return np.clip(blended, 0, 255).astype(np.uint8)
 
-    def extract(self, original: np.ndarray, watermarked: np.ndarray) -> Tuple[np.ndarray, float]:
-        h, w = original.shape[:2]
-        # Convert to float for reverse blending
-        orig_float = original.astype(np.float32)
-        wm_float = watermarked.astype(np.float32)
-
-        alpha = self.config.strength
-        # Reverse: extracted_spectrogram = (watermarked - (1 - alpha)*original) / alpha
-        extracted = (wm_float - (1.0 - alpha) * orig_float) / alpha
-
-        # Convert to grayscale shape
-        extracted_gray = np.mean(extracted, axis=2)
-        # Scale back to valid range
-        extracted_gray = np.clip(extracted_gray, 0, 255).astype(np.uint8)
-        # Use a simple confidence measure: presence of non-zero pixels
-        confidence_score = float(np.mean(extracted_gray) / 255.0)
-
-        return extracted_gray, confidence_score
+    def extract(self, original: np.ndarray, watermarked: np.ndarray):
+        # Remove unused original-based extraction approach
+        pass
 
 class WatermarkManager:
     """Manages watermarking operations and metadata"""
@@ -123,17 +111,9 @@ class WatermarkManager:
 
     def extract_watermark(self, original_path: str, watermarked_path: str) -> Dict:
         try:
-            original = cv2.imread(original_path)
             watermarked = cv2.imread(watermarked_path)
-            if original is None or watermarked is None:
-                raise ValueError("Failed to load images")
-
-            if original.shape != watermarked.shape:
-                watermarked = cv2.resize(watermarked, (original.shape[1], original.shape[0]), interpolation=cv2.INTER_AREA)
-
-            extracted_watermark, confidence = self.strategy.extract(original, watermarked)
-            extracted_hash = hashlib.sha256(extracted_watermark.tobytes()).hexdigest()
-            logger.info(f"Extracted watermark hash: {extracted_hash}")
+            if watermarked is None:
+                raise ValueError("Failed to load watermarked image")
 
             # Load metadata from JSON file
             metadata_file = Path(watermarked_path).stem + "_metadata.json"
@@ -148,14 +128,11 @@ class WatermarkManager:
             if original_metadata:
                 stored_hash = original_metadata.get('watermark_hash')
                 stored_watermark = np.array(original_metadata.get('watermark'))
-                is_verified = stored_hash == extracted_hash and self._compare_watermarks(stored_watermark, extracted_watermark)
                 # Convert back to list for JSON serialization
                 original_metadata['watermark'] = stored_watermark.tolist()
 
             result = {
                 'timestamp': datetime.now().isoformat(),
-                'extracted_hash': extracted_hash,
-                'confidence_score': confidence,
                 'is_verified': is_verified,
                 'original_metadata': original_metadata
             }

@@ -40,16 +40,15 @@ python embed_watermark.py --video <input_video_path> --output <output_video_path
 - --output: Path to save the watermarked video.
 - --strength: (Optional) Alpha-blending strength; defaults to 0.07.
 
-### 2. Extracting a Watermark from a Video
+### 2. Verifying a Watermarked Video
+
+Use the following command to verify ownership of a watermarked video:
 
 ```sh
-python extract_watermark.py --original <original_video_path> --input <watermarked_video_path> --output <output_path> --key <verification_key>
+python extract_watermark.py --input <watermarked_video_path> --key <verification_key>
 ```
 
-- --original: Path to the original (unwatermarked) video.
-- --input: Path to the watermarked video.
-- --output: Path to save the extracted spectrogram.
-- --key: The key used during embedding, verified against the metadata.
+This command computes the hash of the provided video, looks it up in your database (metadata.csv), and verifies if the key and the hashed file match an existing entry.
 
 ## Metadata
 

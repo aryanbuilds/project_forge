@@ -9,8 +9,9 @@ import numpy as np
 import pandas as pd
 import cv2
 import hashlib
+from typing import Tuple
 
-DATABASE_FILE = "metadata.csv"  # Updated to match the file used in extract_watermark.py
+DATABASE_FILE = "metadata.csv"
 
 # Configure logging
 logging.basicConfig(
@@ -19,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def generate_spectrogram(video_path: str) -> np.ndarray:
+def generate_spectrogram(video_path: str, target_size: Tuple[int, int] = None) -> np.ndarray:
     """Generate a spectrogram from video frames."""
     cap = cv2.VideoCapture(video_path)
     frames = []
@@ -32,7 +33,16 @@ def generate_spectrogram(video_path: str) -> np.ndarray:
         frames.append(gray_frame)
 
     cap.release()
+
+    if not frames:
+        raise ValueError("No frames were extracted from the video.")
+
     spectrogram = np.mean(frames, axis=0)  # Average pixel intensity
+
+    # Resize spectrogram to target size if provided
+    if target_size:
+        spectrogram = cv2.resize(spectrogram, target_size, interpolation=cv2.INTER_AREA)
+
     return spectrogram
 
 def store_metadata(metadata: dict):
@@ -54,7 +64,7 @@ def overlay_spectrogram_on_video(video_path: str, spectrogram: np.ndarray, outpu
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for .mp4 files
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use mp4v codec for compatibility with .mp4 format
 
     # Resize spectrogram to match video dimensions
     spectrogram_resized = cv2.resize(spectrogram, (width, height), interpolation=cv2.INTER_AREA)
@@ -62,6 +72,9 @@ def overlay_spectrogram_on_video(video_path: str, spectrogram: np.ndarray, outpu
 
     # Initialize video writer
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    if not out.isOpened():
+        raise ValueError("Failed to initialize VideoWriter. Check codec and output path.")
 
     while True:
         ret, frame = cap.read()
@@ -89,30 +102,50 @@ def main():
     config = WatermarkConfig(strength=args.strength)
 
     try:
-        # Generate spectrogram from the video
-        spectrogram = generate_spectrogram(args.video)
+        # Open video to get dimensions
+        cap = cv2.VideoCapture(args.video)
+        if not cap.isOpened():
+            raise ValueError(f"Failed to open video: {args.video}")
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
 
-        # Generate a unique key for the watermark
-        watermark_hash = hashlib.sha256(spectrogram.tobytes()).hexdigest()
-        key = hashlib.sha256((watermark_hash + str(datetime.now())).encode()).hexdigest()
+        # Log the embedding strength
+        logger.info(f"Embedding watermark with strength: {config.strength}")
+
+        # Generate spectrogram from the video
+        spectrogram = generate_spectrogram(args.video, target_size=(width, height))
+
+        # Save the spectrogram for debugging
+        spectrogram_uint8 = spectrogram.astype(np.uint8)  # Ensure proper depth for saving
+        cv2.imwrite("embedded_spectrogram.jpg", spectrogram_uint8)
 
         # Overlay the spectrogram onto the video
         overlay_spectrogram_on_video(args.video, spectrogram, args.output, config.strength)
 
-        # Store metadata
+        # Read the watermarked video file as binary
+        with open(args.output, "rb") as f:
+            watermarked_video_bytes = f.read()
+        watermarked_video_hash = hashlib.sha256(watermarked_video_bytes).hexdigest()
+
+        # Generate a unique key
+        key = hashlib.sha256((watermarked_video_hash + str(datetime.now())).encode()).hexdigest()
         metadata = {
             "timestamp": datetime.now().isoformat(),
             "video_path": args.video,
             "output_path": args.output,
             "strength": config.strength,
-            "watermark_hash": watermark_hash,
+            "video_file_hash": watermarked_video_hash,
+            "width": width,  # Add width to metadata
+            "height": height,  # Add height to metadata
             "key": key
         }
-        store_metadata(metadata)
+        logger.info(f"Generated key: {key}")
 
+        store_metadata(metadata)
         print(f"Successfully embedded watermark into video. Metadata: {json.dumps(metadata, indent=2)}")
     except Exception as e:
-        print(f"Error: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
