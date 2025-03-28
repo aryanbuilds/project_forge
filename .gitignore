@@ -2,8 +2,9 @@
 node_modules/
 *.json
 
-# Ignore log files
-*.log
+# Ignore data and log files
+**/*.csv
+**/*.log
 
 # Ignore build directories
 dist/

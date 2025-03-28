@@ -1,73 +1,80 @@
-# Enterprise Image & Video Watermarking
+# Video Watermarking with Spectrogram Embedding
 
-This project provides a solution for generating a spectrogram from a video and embedding it into that video via alpha-blending.
+This project provides a robust video watermarking solution that uses spectrogram-based watermarks embedded through alpha blending. The system includes both embedding and verification capabilities.
 
 ## Setup
 
-### 1. Create a Virtual Environment
+### Prerequisites
+- Python 3.8 or higher
+- OpenCV
+- NumPy
+- Pandas
 
+### Installation
+
+1. Clone the repository
+2. Create and activate a virtual environment:
 ```sh
 python -m venv venv
+source venv/bin/activate  # Linux/Mac
+.\venv\Scripts\activate   # Windows
 ```
-### 2. Activate the Virtual Environment
-
-- On Windows:
-    ```sh
-    .\venv\Scripts\activate
-    ```
-- On macOS/Linux:
-    ```sh
-    source venv/bin/activate
-    ```
-
-### 3. Install Requirements
-
+3. Install dependencies:
 ```sh
 pip install -r requirements.txt
 ```
 
 ## Usage
 
-### 1. Embedding a Watermark in a Video
-
-Use the following command to embed a spectrogram watermark:
+### Embedding a Watermark
 
 ```sh
-python embed_watermark.py --video <input_video_path> --output <output_video_path> --strength <watermark_strength>
+python embed_watermark.py --video <input_video> --output <output_video> --strength <optional_strength>
 ```
 
-- --video: Path to the input video.
-- --output: Path to save the watermarked video.
-- --strength: (Optional) Alpha-blending strength; defaults to 0.07.
+Parameters:
+- `--video`: Path to input video file
+- `--output`: Path for watermarked output video
+- `--strength`: Watermark strength (default: 0.07)
 
-### 2. Verifying a Watermarked Video
+The script will:
+1. Generate a spectrogram from the video
+2. Embed it as a watermark using alpha blending
+3. Save metadata to a CSV database
+4. Generate a unique verification key
 
-Use the following command to verify ownership of a watermarked video:
+### Verifying a Watermark
 
 ```sh
-python extract_watermark.py --input <watermarked_video_path> --key <verification_key>
+python extract_watermark.py --input <watermarked_video> --key <verification_key>
 ```
 
-This command computes the hash of the provided video, looks it up in your database (metadata.csv), and verifies if the key and the hashed file match an existing entry.
+Parameters:
+- `--input`: Path to watermarked video
+- `--key`: Verification key received during embedding
 
-## Metadata
+## Testing
 
-After embedding, a JSON metadata file is saved automatically (same stem as your output, plus "_metadata.json"). This metadata includes:
+Run the test suite to validate:
+- Tampering detection (resizing, cropping)
+- Performance with different video durations
+- Watermark reliability
 
-```json
-{
-  "timestamp": "2023-10-05T12:34:56.789012",
-  "watermark_hash": "abcdef1234567890...",
-  "original_size": [800, 600, 3],
-  "config": { ...existing data... },
-  "watermark": [ ... ],
-  "key": "unique sha256 key"
-}
+```sh
+python test_watermark.py
 ```
 
-## Additional Information
+## Technical Details
 
-- The spectrogram is generated from the average pixel intensities of the video frames.
-- The watermark is alpha-blended onto the video, then recovered during extraction.
-- A unique key verifies which video the watermark belongs to, by matching the extracted hash with stored metadata.
-- MoviePy (via FFmpeg) supports most popular video formats, including .mov and .mp4.
+- **Watermark Generation**: Creates a unique spectrogram from video frame analysis
+- **Embedding Method**: Alpha blending with configurable strength
+- **Verification**: Uses SHA-256 hashing and unique keys
+- **Storage**: CSV-based metadata tracking
+- **Supported Formats**: MP4 videos (other formats may work but are not officially supported)
+
+## Security Features
+
+- Tamper detection for video modifications
+- Unique key generation per watermark
+- Secure hash verification
+- Metadata tracking for all watermarked videos

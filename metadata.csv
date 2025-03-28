@@ -1,2 +1,0 @@
-timestamp,video_path,output_path,strength,video_file_hash,key,width,height
-2025-03-28T20:27:25.802453,trial_video.mp4,watermarked_video.mp4,0.07,48e6590d82b55b1d1b876e796f2ebc09427aa8a3f0d44372d6c4c8147612dd24,48e6590d82b55b1d1b876e796f2ebc09427aa8a3f0d44372d6c4c8147612dd24,684,484
