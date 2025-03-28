@@ -1,5 +1,3 @@
 numpy
 opencv-python
-PyWavelets
-cryptography
-scipy
+pandas

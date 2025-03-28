@@ -1,24 +1,20 @@
-# Enterprise Image Watermarking
+# Enterprise Image & Video Watermarking
 
-This project provides a robust solution for embedding and extracting watermarks in images using a hybrid DWT-DCT approach. The watermarking process is designed to be resilient and efficient, leveraging multi-threaded block processing.
+This project provides a solution for generating a spectrogram from a video and embedding it into that video via alpha-blending.
 
 ## Setup
 
 ### 1. Create a Virtual Environment
 
-To keep dependencies isolated, it's recommended to use a virtual environment.
-
 ```sh
 python -m venv venv
 ```
-
 ### 2. Activate the Virtual Environment
 
 - On Windows:
     ```sh
     .\venv\Scripts\activate
     ```
-
 - On macOS/Linux:
     ```sh
     source venv/bin/activate
@@ -26,69 +22,53 @@ python -m venv venv
 
 ### 3. Install Requirements
 
-Install the necessary dependencies using `requirements.txt`.
-
 ```sh
 pip install -r requirements.txt
 ```
 
-## Important Commands
+## Usage
 
-### Embedding a Watermark
+### 1. Embedding a Watermark in a Video
 
-To embed a watermark into an image, use the following command:
-
-```sh
-python embed_watermark.py --input <input_image_path> --output <output_image_path> --strength <watermark_strength>
-```
-
-- `--input`: Path to the input image.
-- `--output`: Path to save the watermarked image.
-- `--strength`: (Optional) Strength of the watermark. Default is `0.05`.
-
-### Extracting a Watermark
-
-To extract a watermark from a watermarked image, use the following command:
+Use the following command to embed a spectrogram watermark:
 
 ```sh
-python extract_watermark.py --input <watermarked_image_path> --output <output_path> --original <original_image_path>
+python embed_watermark.py --video <input_video_path> --output <output_video_path> --strength <watermark_strength>
 ```
 
-- `--input`: Path to the watermarked image.
-- `--output`: Path to save the extracted watermark.
-- `--original`: Path to the original image.
+- --video: Path to the input video.
+- --output: Path to save the watermarked video.
+- --strength: (Optional) Alpha-blending strength; defaults to 0.07.
+
+### 2. Extracting a Watermark from a Video
+
+```sh
+python extract_watermark.py --original <original_video_path> --input <watermarked_video_path> --output <output_path> --key <verification_key>
+```
+
+- --original: Path to the original (unwatermarked) video.
+- --input: Path to the watermarked video.
+- --output: Path to save the extracted spectrogram.
+- --key: The key used during embedding, verified against the metadata.
 
 ## Metadata
 
-Upon successfully embedding a watermark, the following metadata will be generated:
+After embedding, a JSON metadata file is saved automatically (same stem as your output, plus "_metadata.json"). This metadata includes:
 
 ```json
 {
-    "timestamp": "2023-10-05T12:34:56.789012",
-    "watermark_hash": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-    "original_size": [
-        800,
-        600,
-        3
-    ],
-    "config": {
-        "strength": 0.07,
-        "block_size": [
-            16,
-            16
-        ],
-        "wavelet": "db2",
-        "compression_quality": 90,
-        "max_image_size": 2048,
-        "min_image_size": 256
-    }
+  "timestamp": "2023-10-05T12:34:56.789012",
+  "watermark_hash": "abcdef1234567890...",
+  "original_size": [800, 600, 3],
+  "config": { ...existing data... },
+  "watermark": [ ... ],
+  "key": "unique sha256 key"
 }
 ```
 
 ## Additional Information
 
-- Ensure that the images used for embedding and extraction are of the same dimensions.
-- The watermarking process uses a hybrid DWT-DCT approach for robust watermark embedding and extraction.
-- The project includes logging for better traceability and debugging.
-
-For more details, refer to the source code and comments within `watermarking.py`.
+- The spectrogram is generated from the average pixel intensities of the video frames.
+- The watermark is alpha-blended onto the video, then recovered during extraction.
+- A unique key verifies which video the watermark belongs to, by matching the extracted hash with stored metadata.
+- MoviePy (via FFmpeg) supports most popular video formats, including .mov and .mp4.
